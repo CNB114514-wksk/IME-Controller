@@ -7,7 +7,7 @@ use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use std::sync::RwLock;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use windows::Win32::Foundation::{GetLastError, HWND, LPARAM, WPARAM};
 use winreg::enums::*;
 use winreg::RegKey;
@@ -53,7 +53,8 @@ impl Default for Config {
             autostart: false,
             excluded_apps: vec!["ime-controller.exe".to_string()],
             hotkey_toggle: Some("Alt+M".to_string()), // Alt+M (总开关)
-            hotkey_switch_mode: Some("CAPSLOCK".to_string()), // CAPSLOCK (切换中英文模式)
+            // 与 README 保持一致；不建议绑 CAPSLOCK（容易误触导致输入法整体翻转成英文）
+            hotkey_switch_mode: Some("Ctrl+Space".to_string()),
             ime_mode: ImeMode::default(),
             master_switch: true,       // 默认总开关为开启
             show_notifications: false, // 默认不显示通知，避免打扰
@@ -91,9 +92,25 @@ impl Config {
     }
 }
 
+/// 安全读取 CONFIG：锁中毒时自动恢复，避免功能静默失效
+pub fn read_config_or_recover() -> RwLockReadGuard<'static, Config> {
+    CONFIG.read().unwrap_or_else(|poisoned| {
+        warn!("CONFIG 读锁已中毒，自动恢复以避免功能失效");
+        poisoned.into_inner()
+    })
+}
+
+/// 安全写入 CONFIG：锁中毒时自动恢复，避免功能静默失效
+pub fn write_config_or_recover() -> RwLockWriteGuard<'static, Config> {
+    CONFIG.write().unwrap_or_else(|poisoned| {
+        warn!("CONFIG 写锁已中毒，自动恢复以避免功能失效");
+        poisoned.into_inner()
+    })
+}
+
 /// 切换总开关
 pub fn toggle_master_switch(hwnd: HWND) {
-    let mut config = CONFIG.write().unwrap();
+    let mut config = write_config_or_recover();
     config.master_switch = !config.master_switch;
     let new_state = config.master_switch;
     config.save().ok();
@@ -101,7 +118,7 @@ pub fn toggle_master_switch(hwnd: HWND) {
 
     let _ = update_tray_icon(hwnd, new_state);
 
-    if CONFIG.read().unwrap().show_notifications {
+    if read_config_or_recover().show_notifications {
         show_balloon_tip(
             hwnd,
             "状态更改",
@@ -116,7 +133,7 @@ pub fn toggle_master_switch(hwnd: HWND) {
 
 /// 切换自动启动
 pub fn toggle_autostart(hwnd: HWND) {
-    let mut config = CONFIG.write().unwrap();
+    let mut config = write_config_or_recover();
     config.autostart = !config.autostart;
 
     if let Ok(exe_path) = std::env::current_exe() {
@@ -127,7 +144,9 @@ pub fn toggle_autostart(hwnd: HWND) {
         ) {
             Ok(run_key) => {
                 if config.autostart {
-                    let _ = run_key.set_value("IME Controller", &exe_path_str.as_ref());
+                    // 路径含空格时必须加引号，否则 Windows 开机执行 Run 项时会在第一个空格处截断命令，导致自启静默失败
+                    let quoted_path = format!("\"{}\"", exe_path_str);
+                    let _ = run_key.set_value("IME Controller", &quoted_path.as_str());
                     show_balloon_tip(hwnd, "开机自启动", "已设置开机自动启动");
                 } else {
                     let _ = run_key.delete_value("IME Controller");
@@ -145,7 +164,7 @@ pub fn toggle_autostart(hwnd: HWND) {
 
 /// 切换通知显示
 pub fn toggle_notifications(hwnd: HWND) {
-    let mut config = CONFIG.write().unwrap();
+    let mut config = write_config_or_recover();
     config.show_notifications = !config.show_notifications;
     config.save().ok();
 
@@ -156,7 +175,7 @@ pub fn toggle_notifications(hwnd: HWND) {
 
 /// 切换输入法模式
 pub fn switch_ime_mode(hwnd: HWND, mode: ImeMode) {
-    let mut config = CONFIG.write().unwrap();
+    let mut config = write_config_or_recover();
     config.ime_mode = mode.clone();
     config.save().ok();
     drop(config);
@@ -190,7 +209,7 @@ pub fn open_config_directory() {
 
 /// 重新加载配置并刷新热键
 pub fn reload_config_and_hotkeys(hwnd: HWND) {
-    let mut config = CONFIG.write().unwrap();
+    let mut config = write_config_or_recover();
     *config = Config::load();
     drop(config);
     register_all_hotkeys(hwnd);

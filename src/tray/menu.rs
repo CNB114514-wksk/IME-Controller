@@ -1,4 +1,4 @@
-use crate::config::{ImeMode, CONFIG};
+use crate::config::{read_config_or_recover, ImeMode};
 use log::info;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::{
@@ -28,7 +28,7 @@ pub fn show_tray_menu(hwnd: HWND) {
         let _ = GetCursorPos(&mut point);
 
         let hmenu = CreatePopupMenu().unwrap();
-        let config = CONFIG.read().unwrap();
+        let config = read_config_or_recover();
 
         // 添加菜单项
         append_menu_w(

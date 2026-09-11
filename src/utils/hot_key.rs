@@ -13,7 +13,7 @@ pub fn register_all_hotkeys(hwnd: HWND) {
 
 // 注册所有热键，失败时重试
 fn register_all_hotkeys_with_retry(hwnd: HWND, max_retries: i32) {
-    let config = config::CONFIG.read().unwrap();
+    let config = config::read_config_or_recover();
     let toggle_hotkey = config.hotkey_toggle.clone();
     let switch_hotkey = config.hotkey_switch_mode.clone();
     drop(config);

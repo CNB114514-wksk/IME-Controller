@@ -17,3 +17,4 @@ pub const NOTIFYICONMESSAGE: u32 = WM_USER + 100;
 pub const HOT_KEY_TOGGLE_ID: i32 = 1; // 切换总开关
 pub const HOT_KEY_SWITCH_MODE_ID: i32 = 2; // 切换中英文模式
 pub const TIMER_ID_IME_CHECK: usize = 1; // 定时器ID，用于定时检测输入法状态
+pub const IME_CHECK_INTERVAL_MS: u32 = 1500; // 定时检测间隔（毫秒）

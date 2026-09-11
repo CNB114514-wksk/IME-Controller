@@ -1,4 +1,4 @@
-use crate::config::CONFIG;
+use crate::config::read_config_or_recover;
 use windows::Win32::Foundation::*;
 use windows::Win32::UI::Shell::*;
 
@@ -26,7 +26,7 @@ pub fn show_balloon_tip(hwnd: HWND, title: &str, msg: &str) {
 }
 
 pub fn show_hotkey_config_info(hwnd: HWND) {
-    let config = CONFIG.read().unwrap();        
+    let config = read_config_or_recover();
 
     let toggle_key = config
         .hotkey_toggle

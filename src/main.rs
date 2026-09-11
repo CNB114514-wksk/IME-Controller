@@ -7,7 +7,7 @@ mod logger;
 mod tray;
 mod utils;
 
-use log::{error, info};
+use log::{error, info, warn};
 use std::time::Duration;
 
 use windows::Win32::{
@@ -15,6 +15,7 @@ use windows::Win32::{
     UI::{Accessibility::*, WindowsAndMessaging::*},
 };
 
+use crate::config::read_config_or_recover;
 use crate::create_window::create_window;
 use crate::hooks::event_loop_hook::event_hook_callback;
 use crate::icon::add_tray_icon;
@@ -65,6 +66,16 @@ fn main() -> windows::core::Result<()> {
 
     info!("系统启动中...");
 
+    // 提示危险的 CAPSLOCK 热键绑定（易误触导致输入法被整体翻转为英文/大写）
+    if let Some(hk) = read_config_or_recover().hotkey_switch_mode.clone() {
+        if hk.eq_ignore_ascii_case("CAPSLOCK") {
+            warn!(
+                "中英文模式切换热键绑定为 CAPSLOCK，极易误触导致输入法整体翻转为英文，\
+                 建议在 config.json 中改为 Ctrl+Space 等组合键后重新加载配置"
+            );
+        }
+    }
+
     // 检查是否是开机自启动（通过检查启动时间来判断）
     let is_autostart = is_likely_autostart();
     if is_autostart {
@@ -92,6 +103,24 @@ fn main() -> windows::core::Result<()> {
 
     register_all_hotkeys(hwnd);
     info!("热键注册完成");
+
+    // 启动周期性兜底定时器：输入法状态漂移时自动纠正
+    unsafe {
+        if SetTimer(
+            Some(hwnd),
+            constants::TIMER_ID_IME_CHECK,
+            constants::IME_CHECK_INTERVAL_MS,
+            None,
+        ) != 0
+        {
+            info!(
+                "输入法定时检测已启动，间隔 {} ms",
+                constants::IME_CHECK_INTERVAL_MS
+            );
+        } else {
+            error!("SetTimer 注册失败，周期性兜底不可用");
+        }
+    }
 
     // 设置窗口钩子
     let hook = set_window_hook().expect("钩子注册失败");

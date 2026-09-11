@@ -7,6 +7,7 @@ pub mod notifications;
 use windows::Win32::Foundation::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
+use crate::hooks::event_loop_hook::handle_ime_check_timer;
 use crate::tray::hotkey::*;
 use crate::tray::menu::*;
 use log::info;
@@ -24,6 +25,10 @@ pub unsafe extern "system" fn window_proc(
         NOTIFYICON_MESSAGE => handle_tray_message(hwnd, lparam),
         WM_COMMAND => handle_menu_command(hwnd, wparam),
         WM_HOTKEY => handle_hotkey(hwnd, wparam),
+        WM_TIMER => {
+            // 周期性兜底：输入法状态漂移时自动纠正（无需切窗口触发）
+            handle_ime_check_timer();
+        }
         WM_DESTROY => {
             info!("窗口销毁，退出消息循环");
             PostQuitMessage(0);
